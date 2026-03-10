@@ -1,0 +1,71 @@
+name: Test APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.24.5'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install flet
+        run: |
+          pip install flet==0.25.0
+
+      - name: Create pyproject.toml with Android config
+        run: |
+          cat > pyproject.toml << 'EOF'
+          [project]
+          name = "test_app"
+          version = "1.0.0"
+          description = "测试Flet应用"
+          requires-python = ">=3.8"
+          dependencies = ["flet"]
+
+          [tool.flet]
+          org = "com.test"
+          product = "测试应用"
+
+          [tool.flet.android]
+          compile_sdk = 35
+          target_sdk = 35
+          min_sdk = 21
+          EOF
+
+      - name: Build APK (using test.py)
+        run: |
+          # 临时将 test.py 重命名为 main.py，因为 flet build 默认找 main.py
+          mv test.py main.py
+          flet build apk --verbose
+          # 如果你不想重命名，也可以使用 --module-name test 参数，但这里简单起见用重命名
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-app-release
+          path: build/apk/app-release.apk
