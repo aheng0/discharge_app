@@ -33,9 +33,9 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install flet (固定版本 0.24.1)
+      - name: Install flet
         run: |
-          pip install flet==0.24.1
+          pip install flet==0.25.0
 
       - name: Create pyproject.toml with Android config
         run: |
@@ -54,8 +54,8 @@ jobs:
           product = "排污口记录"
 
           [tool.flet.android]
-          compile_sdk = 34
-          target_sdk = 34
+          compile_sdk = 35
+          target_sdk = 35
           min_sdk = 21
           EOF
 
