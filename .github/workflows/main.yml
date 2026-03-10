@@ -26,16 +26,16 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.5'
+          flutter-version: '3.24.5'   # 与你环境一致
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install flet
+      - name: Install flet (固定版本 0.24.1)
         run: |
-          pip install flet
+          pip install flet==0.24.1
 
       - name: Build APK
         run: |
