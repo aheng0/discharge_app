@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK with Cache
 
 on:
   push:
@@ -22,11 +22,28 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Flutter
+      # 1. 缓存 Flutter SDK 和 Pub 依赖
+      - name: Set up Flutter (with cache)
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           flutter-version: '3.24.5'
+          cache: true  # 关键：开启Flutter官方Action的内置缓存
+
+      # 2. 手动缓存 Flutter Pub 依赖 (虽然上面开启了 cache，但为了更精确，可以再显式缓存)
+      #    实际上 subosito/flutter-action 的 cache: true 已经包含了这一步。
+      #    这里仅作为示例，你可以不用重复添加。它会自动缓存 ~/.pub-cache。
+      
+      # 3. 缓存 Android Gradle 依赖 (非常重要！)
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,9 +62,7 @@ jobs:
           version = "1.0.0"
           description = "入河排污口现场记录工具"
           requires-python = ">=3.8"
-          dependencies = [
-              "flet"
-          ]
+          dependencies = ["flet"]
 
           [tool.flet]
           org = "com.yourname"
