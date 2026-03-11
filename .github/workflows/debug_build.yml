@@ -1,0 +1,61 @@
+name: Debug Build with Flutter Project
+
+on:
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.24.5'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install flet
+        run: |
+          pip install flet==0.24.1
+
+      - name: Create Flet project
+        run: |
+          flet create temp_app
+
+      - name: Replace main.py
+        run: |
+          cp main.py temp_app/src/main.py
+
+      - name: Upload Flutter project (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-project
+          path: temp_app/
+
+      - name: Build APK with Flutter
+        working-directory: ./temp_app
+        run: |
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
