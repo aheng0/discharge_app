@@ -1,11 +1,11 @@
-# 入河排污口现场工作记录App - 最终版（时间格式修正、图片尺寸固定）
+# 入河排污口现场工作记录App - 最终兼容版（Flet 0.24.1）
 import flet as ft
 import sqlite3
 import json
 import csv
 import os
 import base64
-from datetime import datetime, date, time
+from datetime import datetime
 
 # ==================== 数据库操作类 ====================
 class Database:
@@ -205,16 +205,15 @@ def export_to_word(record_id, page):
         path = record.get(photo_field, '')
         b64 = image_to_base64(path)
         if b64:
-            img_html = f'<img src="data:image/jpeg;base64,{b64}" style="width:100%; height:auto; display:block; margin:0 auto;"/>'
+            img_html = f'<img src="data:image/jpeg;base64,{b64}" style="max-width:6cm; max-height:6cm; width:auto; height:auto; object-fit:contain;"/>'
         else:
             img_html = '（未拍摄）'
-        return f'<div style="text-align:center;"><div style="width:6cm; margin:0 auto;">{img_html}</div><div style="font-size:small;">{caption}</div></div>'
+        return f'<div style="text-align:center;"><div>{img_html}</div><div style="font-size:small;">{caption}</div></div>'
 
     def photo_grid(prefix, captions):
         cells = []
         for i in range(4):
-            cell_content = photo_cell(f"{prefix}{i+1}", captions[i])
-            cells.append(f'<td style="border:1px solid black; padding:5px;">{cell_content}</td>')
+            cells.append(f'<td style="width:50%; border:1px solid black; padding:5px;">{photo_cell(f"{prefix}{i+1}", captions[i])}</td>')
         return f'''
             <table style="width:100%; border-collapse:collapse;">
                 <tr>{cells[0]}{cells[1]}</tr>
@@ -337,7 +336,6 @@ def export_to_excel(db, page):
         ("入河方式", lambda row: row[col_names.index('entry_method')]),
         ("排污口一级分类", lambda row: row[col_names.index('outlet_type_main')]),
         ("排污口二级分类", lambda row: row[col_names.index('outlet_type_sub')]),
-        # 责任主体拆分为四列
         ("责任主体是否确定", lambda row: status_to_chinese(row[col_names.index('responsible_party_status')],
                         {'unknown':'否','known':'是'})),
         ("责任主体名称", lambda row: (lambda parties: parties[0].get('name','') if parties else '')(safe_json_loads(row[col_names.index('responsible_parties')]))),
@@ -538,43 +536,6 @@ def main(page: ft.Page):
             monitor_people_rows = [ft.TextField(label="监测人员", width=300) for _ in range(2)]
         monitor_people_container.controls = monitor_people_rows
 
-        # ---------- 通用时间选择函数 ----------
-        def pick_datetime(target_field: ft.TextField):
-            def on_date_selected(e):
-                date_str = e.data
-                if not date_str:
-                    return
-                # 解析日期字符串，提取 YYYY-MM-DD
-                if 'T' in date_str:
-                    date_part = date_str[:10]
-                else:
-                    date_part = date_str
-                # 弹出时间选择器
-                time_picker = ft.TimePicker(
-                    on_change=lambda t: on_time_selected(t, date_part),
-                    on_dismiss=lambda _: page.update(),
-                    confirm_text="确认",
-                    cancel_text="取消",
-                )
-                page.open(time_picker)
-                page.update()
-
-            def on_time_selected(e, date_part):
-                if e.data:
-                    datetime_str = f"{date_part} {e.data}"
-                    target_field.value = datetime_str
-                    page.update()
-
-            # 弹出日期选择器
-            date_picker = ft.DatePicker(
-                on_change=on_date_selected,
-                on_dismiss=lambda _: page.update(),
-                confirm_text="确认",
-                cancel_text="取消",
-            )
-            page.open(date_picker)
-            page.update()
-
         # ---------- 创建表单控件 ----------
         # 1. 任务来源
         task_source_radio = ft.RadioGroup(
@@ -763,7 +724,6 @@ def main(page: ft.Page):
             odor_desc.visible = visible
             page.update()
         is_discharging_radio.on_change = on_is_discharging_change
-        # 初始化可见性
         on_is_discharging_change(None)
 
         oil_film_radio = ft.RadioGroup(
@@ -858,11 +818,17 @@ def main(page: ft.Page):
         monitor_unavailable_reason = ft.TextField(label="具体情况", visible=False, multiline=True)
         monitor_container = ft.Column(visible=False)
 
-        # 时间字段（使用选择器）
-        monitor_start = ft.TextField(label="监测开始时间", value=record_data.get('monitor_start_time', ''), read_only=True)
-        monitor_start_btn = ft.ElevatedButton("选择", on_click=lambda e: pick_datetime(monitor_start))
-        monitor_end = ft.TextField(label="监测结束时间", value=record_data.get('monitor_end_time', ''), read_only=True)
-        monitor_end_btn = ft.ElevatedButton("选择", on_click=lambda e: pick_datetime(monitor_end))
+        # 时间字段（改为普通文本框，无按钮）
+        monitor_start = ft.TextField(
+            label="监测开始时间",
+            value=record_data.get('monitor_start_time', ''),
+            hint_text="例如 2025-03-11 14:30"
+        )
+        monitor_end = ft.TextField(
+            label="监测结束时间",
+            value=record_data.get('monitor_end_time', ''),
+            hint_text="例如 2025-03-11 15:30"
+        )
 
         flow_status_radio = ft.RadioGroup(
             content=ft.Row([
@@ -891,8 +857,8 @@ def main(page: ft.Page):
             ft.Text("监测人员（至少2人）"),
             monitor_people_container,
             ft.ElevatedButton("+ 添加监测人员", on_click=add_monitor_people),
-            ft.Row([monitor_start, monitor_start_btn]),
-            ft.Row([monitor_end, monitor_end_btn]),
+            monitor_start,
+            monitor_end,
             ft.Text("流量测定"),
             flow_status_radio,
             flow_value,
@@ -953,15 +919,18 @@ def main(page: ft.Page):
 
         other_indicators = ft.TextField(label="其他选测指标", value=record_data.get('other_indicators', ''))
         test_institution = ft.TextField(label="检测机构", value=record_data.get('test_institution', ''))
-        sample_arrive_time = ft.TextField(label="样品送达时间", value=record_data.get('sample_arrive_time', ''), read_only=True)
-        sample_arrive_btn = ft.ElevatedButton("选择", on_click=lambda e: pick_datetime(sample_arrive_time))
+        sample_arrive_time = ft.TextField(
+            label="样品送达时间",
+            value=record_data.get('sample_arrive_time', ''),
+            hint_text="例如 2025-03-11 16:00"
+        )
 
         sample_container.controls = [
             ft.Text("送检指标（可多选）"),
             ft.Column(indicator_checkboxes),
             other_indicators,
             test_institution,
-            ft.Row([sample_arrive_time, sample_arrive_btn]),
+            sample_arrive_time,
         ]
 
         def on_sample_status_change(e):
