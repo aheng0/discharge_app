@@ -1,0 +1,78 @@
+name: Build APK with Splash Screen Patch
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.24.5'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install flet
+        run: |
+          pip install flet==0.24.1
+
+      - name: Create Flet project
+        run: |
+          flet create temp_app
+
+      - name: Replace main.py
+        run: |
+          cp main.py temp_app/src/main.py
+
+      - name: Apply Android patches
+        run: |
+          # 获取包名路径（基于你的配置 com.yourname.discharge_app）
+          PACKAGE_PATH="com/yourname/discharge_app"
+          ANDROID_SRC="temp_app/android/app/src/main"
+
+          # 确保目标目录存在
+          mkdir -p $ANDROID_SRC/kotlin/$PACKAGE_PATH
+
+          # 复制 Kotlin 代码
+          if [ -d "android_patches/kotlin/com/yourname/discharge_app" ]; then
+            cp -r android_patches/kotlin/com/yourname/discharge_app/* $ANDROID_SRC/kotlin/$PACKAGE_PATH/
+          fi
+
+          # 复制资源文件
+          if [ -d "android_patches/res" ]; then
+            cp -r android_patches/res/* $ANDROID_SRC/res/
+          fi
+
+          echo "Android patches applied."
+
+      - name: Build APK with Flutter
+        working-directory: ./temp_app
+        run: |
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-splash
+          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
