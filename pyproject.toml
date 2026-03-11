@@ -9,4 +9,4 @@ dependencies = [
 
 [tool.flet]
 org = "com.yourname"
-product = "排污口记录"
+product = "discharge_app"   # 改为英文
