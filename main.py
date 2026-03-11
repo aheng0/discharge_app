@@ -1,4 +1,4 @@
-# 入河排污口现场工作记录App - 最终兼容版（Flet 0.24.1）
+# 入河排污口现场工作记录App - 最终兼容版（添加错误捕获）
 import flet as ft
 import sqlite3
 import json
@@ -396,758 +396,770 @@ def export_to_excel(db, page):
 
 # ==================== 主程序 ====================
 def main(page: ft.Page):
-    page.title = "入河排污口现场记录"
-    page.theme_mode = ft.ThemeMode.LIGHT
-    page.padding = 20
-    page.scroll = ft.ScrollMode.AUTO
-    page.window.width = 400
-    page.window.height = 700
+    try:  # 全局异常捕获
+        page.title = "入河排污口现场记录"
+        page.theme_mode = ft.ThemeMode.LIGHT
+        page.padding = 20
+        page.scroll = ft.ScrollMode.AUTO
+        page.window.width = 400
+        page.window.height = 700
 
-    db = Database()
-    current_edit_id = None
-    photo_paths = ["", "", "", ""]
-    monitor_photo_paths = ["", "", "", ""]
-
-    # ========== 列表页 ==========
-    def show_list_view():
-        page.clean()
-        records = db.get_all_records()
-        record_cards = []
-        for record in records:
-            record_id, create_time, outlet_name = record
-            try:
-                time_str = datetime.fromisoformat(create_time).strftime("%Y-%m-%d %H:%M")
-            except:
-                time_str = create_time
-            card = ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.ListTile(
-                            leading=ft.Icon(ft.icons.ASSIGNMENT),
-                            title=ft.Text(outlet_name if outlet_name else "未命名记录"),
-                            subtitle=ft.Text(f"创建时间: {time_str}"),
-                        ),
-                        ft.Row([
-                            ft.TextButton("查看/编辑", on_click=lambda e, rid=record_id: show_form_view(rid)),
-                            ft.TextButton("删除", on_click=lambda e, rid=record_id: delete_record(rid)),
-                            ft.TextButton("导出Word", on_click=lambda e, rid=record_id: export_to_word(rid, page)),
-                        ], alignment=ft.MainAxisAlignment.END)
-                    ]),
-                    padding=10,
-                )
-            )
-            record_cards.append(card)
-
-        if not record_cards:
-            record_cards.append(ft.Text("暂无记录，点击下方+号添加"))
-
-        page.add(
-            ft.Row([
-                ft.Text("记录列表", size=24, weight=ft.FontWeight.BOLD),
-                ft.Row([
-                    ft.ElevatedButton("导出Excel", on_click=lambda e: export_to_excel(db, page)),
-                    ft.IconButton(icon=ft.icons.ADD, icon_size=30, on_click=lambda e: show_form_view(None)),
-                ]),
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-            ft.Divider(),
-            ft.Column(record_cards, scroll=ft.ScrollMode.AUTO, expand=True),
-        )
-        page.update()
-
-    def delete_record(record_id):
-        db.delete_record(record_id)
-        page.show_snack_bar(ft.SnackBar(content=ft.Text("删除成功")))
-        show_list_view()
-
-    # ========== 表单页 ==========
-    def show_form_view(record_id=None):
-        page.clean()
-        nonlocal current_edit_id, photo_paths, monitor_photo_paths
-        current_edit_id = record_id
+        db = Database()
+        current_edit_id = None
         photo_paths = ["", "", "", ""]
         monitor_photo_paths = ["", "", "", ""]
 
-        record_data = {}
-        if record_id:
-            record_data = db.get_record_by_id(record_id) or {}
-            for i in range(4):
-                photo_paths[i] = record_data.get(f'photo{i+1}', '')
-                monitor_photo_paths[i] = record_data.get(f'monitor_photo{i+1}', '')
+        # ========== 列表页 ==========
+        def show_list_view():
+            page.clean()
+            records = db.get_all_records()
+            record_cards = []
+            for record in records:
+                record_id, create_time, outlet_name = record
+                try:
+                    time_str = datetime.fromisoformat(create_time).strftime("%Y-%m-%d %H:%M")
+                except:
+                    time_str = create_time
+                card = ft.Card(
+                    content=ft.Container(
+                        content=ft.Column([
+                            ft.ListTile(
+                                leading=ft.Icon(ft.icons.ASSIGNMENT),
+                                title=ft.Text(outlet_name if outlet_name else "未命名记录"),
+                                subtitle=ft.Text(f"创建时间: {time_str}"),
+                            ),
+                            ft.Row([
+                                ft.TextButton("查看/编辑", on_click=lambda e, rid=record_id: show_form_view(rid)),
+                                ft.TextButton("删除", on_click=lambda e, rid=record_id: delete_record(rid)),
+                                ft.TextButton("导出Word", on_click=lambda e, rid=record_id: export_to_word(rid, page)),
+                            ], alignment=ft.MainAxisAlignment.END)
+                        ]),
+                        padding=10,
+                    )
+                )
+                record_cards.append(card)
 
-        # ---------- 工具函数：动态添加行 ----------
-        participant_rows = []
-        participants_container = ft.Column([])
+            if not record_cards:
+                record_cards.append(ft.Text("暂无记录，点击下方+号添加"))
 
-        def add_participant(e):
-            participant_rows.append(ft.TextField(label="参加人员", width=300))
-            participants_container.controls = participant_rows
+            page.add(
+                ft.Row([
+                    ft.Text("记录列表", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Row([
+                        ft.ElevatedButton("导出Excel", on_click=lambda e: export_to_excel(db, page)),
+                        ft.IconButton(icon=ft.icons.ADD, icon_size=30, on_click=lambda e: show_form_view(None)),
+                    ]),
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Divider(),
+                ft.Column(record_cards, scroll=ft.ScrollMode.AUTO, expand=True),
+            )
             page.update()
 
-        if record_data.get('participants'):
-            try:
-                part_list = json.loads(record_data['participants'])
-                for name in part_list:
-                    participant_rows.append(ft.TextField(value=name, label="参加人员", width=300))
-            except:
-                pass
-        participants_container.controls = participant_rows
+        def delete_record(record_id):
+            db.delete_record(record_id)
+            page.show_snack_bar(ft.SnackBar(content=ft.Text("删除成功")))
+            show_list_view()
 
-        # 责任主体动态行
-        def create_responsible_row(name="", industry=""):
-            return ft.Row([
-                ft.TextField(value=name, label="主体名称", width=200),
-                ft.TextField(value=industry, label="行业类别", width=200),
-            ])
+        # ========== 表单页 ==========
+        def show_form_view(record_id=None):
+            page.clean()
+            nonlocal current_edit_id, photo_paths, monitor_photo_paths
+            current_edit_id = record_id
+            photo_paths = ["", "", "", ""]
+            monitor_photo_paths = ["", "", "", ""]
 
-        responsible_rows = []
-        responsible_container = ft.Column([])
+            record_data = {}
+            if record_id:
+                record_data = db.get_record_by_id(record_id) or {}
+                for i in range(4):
+                    photo_paths[i] = record_data.get(f'photo{i+1}', '')
+                    monitor_photo_paths[i] = record_data.get(f'monitor_photo{i+1}', '')
 
-        def add_responsible(e):
-            responsible_rows.append(create_responsible_row())
-            responsible_container.controls = responsible_rows
-            page.update()
+            # ---------- 工具函数：动态添加行 ----------
+            participant_rows = []
+            participants_container = ft.Column([])
 
-        if record_data.get('responsible_parties'):
-            try:
-                parties = json.loads(record_data['responsible_parties'])
-                for p in parties:
-                    responsible_rows.append(create_responsible_row(p.get('name', ''), p.get('industry', '')))
-            except:
-                pass
-        responsible_container.controls = responsible_rows
-
-        # 监测人员动态行
-        monitor_people_rows = []
-        monitor_people_container = ft.Column([])
-
-        def add_monitor_people(e):
-            monitor_people_rows.append(ft.TextField(label="监测人员", width=300))
-            monitor_people_container.controls = monitor_people_rows
-            page.update()
-
-        if record_data.get('monitor_people'):
-            try:
-                people_list = json.loads(record_data['monitor_people'])
-                for name in people_list:
-                    monitor_people_rows.append(ft.TextField(value=name, label="监测人员", width=300))
-            except:
-                pass
-        else:
-            monitor_people_rows = [ft.TextField(label="监测人员", width=300) for _ in range(2)]
-        monitor_people_container.controls = monitor_people_rows
-
-        # ---------- 创建表单控件 ----------
-        # 1. 任务来源
-        task_source_radio = ft.RadioGroup(
-            content=ft.Column([
-                ft.Radio(value="监督性抽测", label="监督性抽测"),
-                ft.Radio(value="暗查摸排", label="暗查摸排"),
-                ft.Radio(value="监督检查", label="监督检查"),
-                ft.Radio(value="其他", label="其他工作"),
-            ]),
-            value=record_data.get('task_source', '') if record_data.get('task_source') else ''
-        )
-        other_task_field = ft.TextField(label="请注明其他工作内容", visible=False, width=300)
-
-        def on_task_source_change(e):
-            other_task_field.visible = (task_source_radio.value == "其他")
-            page.update()
-        task_source_radio.on_change = on_task_source_change
-
-        if record_data.get('task_source', '').startswith("其他:"):
-            task_source_radio.value = "其他"
-            other_task_field.value = record_data['task_source'][3:]
-            other_task_field.visible = True
-
-        # 2. 排污口名称
-        name_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="unknown", label="暂不掌握"),
-                ft.Radio(value="known", label="已掌握"),
-                ft.Radio(value="sign", label="现场标识牌显示"),
-            ]),
-            value=record_data.get('outlet_name_status', 'unknown')
-        )
-        outlet_name = ft.TextField(label="排污口名称", value=record_data.get('outlet_name', ''), width=300,
-                                   disabled=(record_data.get('outlet_name_status', 'unknown') == 'unknown'))
-
-        def on_name_radio_change(e):
-            outlet_name.disabled = (name_radio.value == "unknown")
-            if name_radio.value == "unknown":
-                outlet_name.value = ""
-            page.update()
-        name_radio.on_change = on_name_radio_change
-
-        # 3. 排污口编码
-        code_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="unknown", label="暂不掌握"),
-                ft.Radio(value="known", label="已掌握"),
-                ft.Radio(value="sign", label="现场标识牌显示"),
-            ]),
-            value=record_data.get('outlet_code_status', 'unknown')
-        )
-        outlet_code = ft.TextField(label="排污口编码", value=record_data.get('outlet_code', ''), width=300,
-                                   disabled=(record_data.get('outlet_code_status', 'unknown') == 'unknown'))
-
-        def on_code_radio_change(e):
-            outlet_code.disabled = (code_radio.value == "unknown")
-            if code_radio.value == "unknown":
-                outlet_code.value = ""
-            page.update()
-        code_radio.on_change = on_code_radio_change
-
-        # 4. 纳入国家平台
-        platform_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="1", label="是"),
-                ft.Radio(value="0", label="否"),
-                ft.Radio(value="2", label="需进一步核实"),
-            ]),
-            value=str(record_data.get('in_national_platform', '0'))
-        )
-
-        # 5. 行政区（五级）
-        province = ft.TextField(label="省（区）", value=record_data.get('province', ''))
-        city = ft.TextField(label="市（州、盟）", value=record_data.get('city', ''))
-        county = ft.TextField(label="县（区、旗、市）", value=record_data.get('county', ''))
-        town = ft.TextField(label="乡（镇、街道）", value=record_data.get('town', ''))
-        village = ft.TextField(label="村（社区）", value=record_data.get('village', ''))
-
-        # 6. 经纬度
-        longitude = ft.TextField(label="经度", value=str(record_data.get('longitude', '')))
-        latitude = ft.TextField(label="纬度", value=str(record_data.get('latitude', '')))
-        def get_location(e):
-            longitude.value = "116.397428"
-            latitude.value = "39.90923"
-            page.update()
-        get_location_btn = ft.ElevatedButton("获取当前位置", on_click=get_location)
-
-        # 7. 水体信息
-        water_body = ft.TextField(label="排入水体名称", value=record_data.get('water_body', ''))
-        water_func_zone1 = ft.TextField(label="一级水功能区名称", value=record_data.get('water_func_zone1', ''))
-        water_func_zone2 = ft.TextField(label="二级水功能区名称", value=record_data.get('water_func_zone2', ''))
-        downstream_section = ft.TextField(label="下游最近国控断面名称", value=record_data.get('downstream_section', ''))
-        downstream_distance = ft.TextField(label="距离 (km)", value=str(record_data.get('downstream_distance', '')))
-
-        # 8. 入河方式
-        entry_methods = ["明渠", "管道", "泵站", "涵闸", "箱涵", "其他"]
-        entry_dropdown = ft.Dropdown(
-            label="污水入河方式",
-            options=[ft.dropdown.Option(m) for m in entry_methods],
-            value=record_data.get('entry_method', '')
-        )
-
-        # 9. 排污口分类
-        outlet_type_main_radio = ft.RadioGroup(
-            content=ft.Column([
-                ft.Radio(value="工业排污口", label="工业排污口"),
-                ft.Radio(value="城镇污水处理厂排污口", label="城镇污水处理厂排污口"),
-                ft.Radio(value="农业排口", label="农业排口"),
-                ft.Radio(value="其他排口", label="其他排口"),
-                ft.Radio(value="暂无法确定", label="暂无法确定"),
-            ]),
-            value=record_data.get('outlet_type_main', '')
-        )
-
-        sub_options = {
-            "工业排污口": ["工业企业排污口", "矿山排污口", "尾矿库排污口", "工业及其他各类园区污水处理厂排污口",
-                          "工业企业雨洪排口", "矿山雨洪排口", "尾矿库雨洪排口", "工业及其他各类园区污水处理厂雨洪排口"],
-            "农业排口": ["规模化畜禽养殖排污口", "规模化水产养殖排污口"],
-            "其他排口": ["大中型灌区排口", "港口码头排口", "规模以下畜禽养殖排污口", "规模以下水产养殖排污口",
-                        "城镇生活污水散排口", "农村污水处理设施排污口", "农村生活污水散排口", "城镇雨洪排口", "其他排污"],
-        }
-
-        outlet_type_sub_dropdown = ft.Dropdown(
-            label="选择二级分类",
-            options=[],
-            visible=False,
-            width=300
-        )
-        outlet_type_sub_text = ft.TextField(label="具体情况", visible=False, width=300)
-
-        def on_outlet_type_main_change(e):
-            main_val = outlet_type_main_radio.value
-            if main_val in sub_options:
-                outlet_type_sub_dropdown.options = [ft.dropdown.Option(opt) for opt in sub_options[main_val]]
-                outlet_type_sub_dropdown.value = record_data.get('outlet_type_sub', '') if record_data.get('outlet_type_main') == main_val else ''
-                outlet_type_sub_dropdown.visible = True
-                outlet_type_sub_text.visible = False
-            elif main_val == "暂无法确定":
-                outlet_type_sub_dropdown.visible = False
-                outlet_type_sub_text.visible = True
-                outlet_type_sub_text.value = record_data.get('outlet_type_sub', '') if record_data.get('outlet_type_main') == "暂无法确定" else ''
-            else:
-                outlet_type_sub_dropdown.visible = False
-                outlet_type_sub_text.visible = False
-            page.update()
-        outlet_type_main_radio.on_change = on_outlet_type_main_change
-
-        if record_data.get('outlet_type_main'):
-            on_outlet_type_main_change(None)
-
-        # 10. 责任主体
-        responsible_status_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="unknown", label="暂无法确定，需进一步溯源"),
-                ft.Radio(value="known", label="已确定"),
-            ]),
-            value=record_data.get('responsible_party_status', 'unknown')
-        )
-        responsible_container.visible = (responsible_status_radio.value == "known")
-        add_responsible_btn = ft.ElevatedButton("+ 添加责任主体", on_click=add_responsible, visible=False)
-
-        def on_responsible_status_change(e):
-            visible = (responsible_status_radio.value == "known")
-            responsible_container.visible = visible
-            add_responsible_btn.visible = visible
-            page.update()
-        responsible_status_radio.on_change = on_responsible_status_change
-        on_responsible_status_change(None)
-
-        # 11. 现场情况
-        is_discharging_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="是", label="是"),
-                ft.Radio(value="否", label="否"),
-            ]),
-            value=record_data.get('is_discharging', '否')
-        )
-        color_desc = ft.TextField(label="颜色", value=record_data.get('color_desc', ''), visible=True)
-        turbidity_desc = ft.TextField(label="浑浊度", value=record_data.get('turbidity_desc', ''), visible=True)
-        odor_desc = ft.TextField(label="气味", value=record_data.get('odor_desc', ''), visible=True)
-
-        def on_is_discharging_change(e):
-            visible = (is_discharging_radio.value == "是")
-            color_desc.visible = visible
-            turbidity_desc.visible = visible
-            odor_desc.visible = visible
-            page.update()
-        is_discharging_radio.on_change = on_is_discharging_change
-        on_is_discharging_change(None)
-
-        oil_film_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="有", label="有"),
-                ft.Radio(value="无", label="无"),
-            ]),
-            value=record_data.get('has_oil_film', '无')
-        )
-        other_issues = ft.TextField(label="其他问题或异常情况", value=record_data.get('other_issues', ''), multiline=True, min_lines=2)
-
-        # 12. 现场照片（4张）
-        photo_images = []
-        photo_buttons = []
-        photo_status_texts = []
-
-        for i in range(4):
-            img = ft.Image(width=200, height=150, fit=ft.ImageFit.CONTAIN, visible=False)
-            photo_images.append(img)
-            status = ft.Text(f"未拍摄", size=12)
-            photo_status_texts.append(status)
-
-            def take_photo(idx=i, target='general'):
-                def on_file_picked(e):
-                    if e.files:
-                        path = e.files[0].path
-                        if target == 'general':
-                            photo_paths[idx] = path
-                            photo_images[idx].src = path
-                            photo_images[idx].visible = True
-                            photo_status_texts[idx].value = os.path.basename(path)
-                        else:
-                            monitor_photo_paths[idx] = path
-                            monitor_photo_images[idx].src = path
-                            monitor_photo_images[idx].visible = True
-                            monitor_photo_status_texts[idx].value = os.path.basename(path)
-                        page.update()
-                file_picker = ft.FilePicker(on_result=on_file_picked)
-                page.overlay.append(file_picker)
+            def add_participant(e):
+                participant_rows.append(ft.TextField(label="参加人员", width=300))
+                participants_container.controls = participant_rows
                 page.update()
-                file_picker.pick_files(allow_multiple=False, allowed_extensions=['jpg', 'jpeg', 'png'])
 
-            btn = ft.ElevatedButton(f"拍摄照片{i+1}", on_click=lambda e, idx=i, t='general': take_photo(idx, t))
-            photo_buttons.append(btn)
+            if record_data.get('participants'):
+                try:
+                    part_list = json.loads(record_data['participants'])
+                    for name in part_list:
+                        participant_rows.append(ft.TextField(value=name, label="参加人员", width=300))
+                except:
+                    pass
+            participants_container.controls = participant_rows
 
-        if record_id:
-            for i in range(4):
-                path = photo_paths[i]
-                if path and os.path.exists(path):
-                    photo_images[i].src = path
-                    photo_images[i].visible = True
-                    photo_status_texts[i].value = os.path.basename(path)
+            # 责任主体动态行
+            def create_responsible_row(name="", industry=""):
+                return ft.Row([
+                    ft.TextField(value=name, label="主体名称", width=200),
+                    ft.TextField(value=industry, label="行业类别", width=200),
+                ])
 
-        # 13. 监测照片
-        monitor_photo_images = []
-        monitor_photo_buttons = []
-        monitor_photo_status_texts = []
+            responsible_rows = []
+            responsible_container = ft.Column([])
 
-        monitor_photo_labels = [
-            "监测采样点照片（展示测流及采样条件）",
-            "采样或测流工作照片",
-            "水样照片（可准确显示水样颜色和浑浊程度）",
-            "快检结果照片（各指标合拍）"
-        ]
+            def add_responsible(e):
+                responsible_rows.append(create_responsible_row())
+                responsible_container.controls = responsible_rows
+                page.update()
 
-        for i in range(4):
-            img = ft.Image(width=200, height=150, fit=ft.ImageFit.CONTAIN, visible=False)
-            monitor_photo_images.append(img)
-            status = ft.Text(f"未拍摄", size=12)
-            monitor_photo_status_texts.append(status)
+            if record_data.get('responsible_parties'):
+                try:
+                    parties = json.loads(record_data['responsible_parties'])
+                    for p in parties:
+                        responsible_rows.append(create_responsible_row(p.get('name', ''), p.get('industry', '')))
+                except:
+                    pass
+            responsible_container.controls = responsible_rows
 
-            btn = ft.ElevatedButton(monitor_photo_labels[i], on_click=lambda e, idx=i, t='monitor': take_photo(idx, t))
-            monitor_photo_buttons.append(btn)
+            # 监测人员动态行
+            monitor_people_rows = []
+            monitor_people_container = ft.Column([])
 
-        if record_id:
-            for i in range(4):
-                path = monitor_photo_paths[i]
-                if path and os.path.exists(path):
-                    monitor_photo_images[i].src = path
-                    monitor_photo_images[i].visible = True
-                    monitor_photo_status_texts[i].value = os.path.basename(path)
+            def add_monitor_people(e):
+                monitor_people_rows.append(ft.TextField(label="监测人员", width=300))
+                monitor_people_container.controls = monitor_people_rows
+                page.update()
 
-        # 14. 现场监测
-        monitor_status_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="yes", label="是"),
-                ft.Radio(value="no", label="否"),
-                ft.Radio(value="unavailable", label="不具备条件"),
-            ]),
-            value=record_data.get('monitor_status', 'no')
-        )
-        monitor_unavailable_reason = ft.TextField(label="具体情况", visible=False, multiline=True)
-        monitor_container = ft.Column(visible=False)
+            if record_data.get('monitor_people'):
+                try:
+                    people_list = json.loads(record_data['monitor_people'])
+                    for name in people_list:
+                        monitor_people_rows.append(ft.TextField(value=name, label="监测人员", width=300))
+                except:
+                    pass
+            else:
+                monitor_people_rows = [ft.TextField(label="监测人员", width=300) for _ in range(2)]
+            monitor_people_container.controls = monitor_people_rows
 
-        # 时间字段（改为普通文本框，无按钮）
-        monitor_start = ft.TextField(
-            label="监测开始时间",
-            value=record_data.get('monitor_start_time', ''),
-            hint_text="例如 2025-03-11 14:30"
-        )
-        monitor_end = ft.TextField(
-            label="监测结束时间",
-            value=record_data.get('monitor_end_time', ''),
-            hint_text="例如 2025-03-11 15:30"
-        )
+            # ---------- 创建表单控件 ----------
+            # 1. 任务来源
+            task_source_radio = ft.RadioGroup(
+                content=ft.Column([
+                    ft.Radio(value="监督性抽测", label="监督性抽测"),
+                    ft.Radio(value="暗查摸排", label="暗查摸排"),
+                    ft.Radio(value="监督检查", label="监督检查"),
+                    ft.Radio(value="其他", label="其他工作"),
+                ]),
+                value=record_data.get('task_source', '') if record_data.get('task_source') else ''
+            )
+            other_task_field = ft.TextField(label="请注明其他工作内容", visible=False, width=300)
 
-        flow_status_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="unavailable", label="不具备测定条件"),
-                ft.Radio(value="unmeasured", label="未测定"),
-                ft.Radio(value="measured", label="现场测定"),
-            ]),
-            value=record_data.get('flow_status', 'unmeasured')
-        )
-        flow_value = ft.TextField(label="流量 (m³/s)", value=str(record_data.get('flow_value', '')), visible=False)
-        water_temp = ft.TextField(label="水温 (℃)", value=str(record_data.get('water_temp', '')))
-        ph_value = ft.TextField(label="pH值", value=str(record_data.get('ph_value', '')))
-        conductivity = ft.TextField(label="电导率 (μs/cm)", value=str(record_data.get('conductivity', '')))
-        quick_cod = ft.TextField(label="COD (mg/L)", value=str(record_data.get('quick_cod', '')))
-        quick_nh3n = ft.TextField(label="氨氮 (mg/L)", value=str(record_data.get('quick_nh3n', '')))
-        quick_tp = ft.TextField(label="总磷 (mg/L)", value=str(record_data.get('quick_tp', '')))
-        quick_tn = ft.TextField(label="总氮 (mg/L)", value=str(record_data.get('quick_tn', '')))
-        other_index = ft.TextField(label="其他指标", value=record_data.get('other_index', ''))
+            def on_task_source_change(e):
+                other_task_field.visible = (task_source_radio.value == "其他")
+                page.update()
+            task_source_radio.on_change = on_task_source_change
 
-        def on_flow_status_change(e):
-            flow_value.visible = (flow_status_radio.value == "measured")
-            page.update()
-        flow_status_radio.on_change = on_flow_status_change
+            if record_data.get('task_source', '').startswith("其他:"):
+                task_source_radio.value = "其他"
+                other_task_field.value = record_data['task_source'][3:]
+                other_task_field.visible = True
 
-        monitor_container.controls = [
-            ft.Text("监测人员（至少2人）"),
-            monitor_people_container,
-            ft.ElevatedButton("+ 添加监测人员", on_click=add_monitor_people),
-            monitor_start,
-            monitor_end,
-            ft.Text("流量测定"),
-            flow_status_radio,
-            flow_value,
-            water_temp,
-            ph_value,
-            conductivity,
-            quick_cod,
-            quick_nh3n,
-            quick_tp,
-            quick_tn,
-            other_index,
-            ft.Divider(),
-            ft.Text("监测现场照片"),
-            ft.Column([
-                ft.Row([monitor_photo_buttons[0], monitor_photo_status_texts[0]]),
-                monitor_photo_images[0],
-                ft.Row([monitor_photo_buttons[1], monitor_photo_status_texts[1]]),
-                monitor_photo_images[1],
-                ft.Row([monitor_photo_buttons[2], monitor_photo_status_texts[2]]),
-                monitor_photo_images[2],
-                ft.Row([monitor_photo_buttons[3], monitor_photo_status_texts[3]]),
-                monitor_photo_images[3],
-            ]),
-        ]
+            # 2. 排污口名称
+            name_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="unknown", label="暂不掌握"),
+                    ft.Radio(value="known", label="已掌握"),
+                    ft.Radio(value="sign", label="现场标识牌显示"),
+                ]),
+                value=record_data.get('outlet_name_status', 'unknown')
+            )
+            outlet_name = ft.TextField(label="排污口名称", value=record_data.get('outlet_name', ''), width=300,
+                                       disabled=(record_data.get('outlet_name_status', 'unknown') == 'unknown'))
 
-        def on_monitor_status_change(e):
-            status = monitor_status_radio.value
-            monitor_unavailable_reason.visible = (status == "unavailable")
-            monitor_container.visible = (status == "yes")
-            page.update()
-        monitor_status_radio.on_change = on_monitor_status_change
-        on_monitor_status_change(None)
+            def on_name_radio_change(e):
+                outlet_name.disabled = (name_radio.value == "unknown")
+                if name_radio.value == "unknown":
+                    outlet_name.value = ""
+                page.update()
+            name_radio.on_change = on_name_radio_change
 
-        # 15. 采样送检
-        sample_status_radio = ft.RadioGroup(
-            content=ft.Row([
-                ft.Radio(value="yes", label="是"),
-                ft.Radio(value="no", label="否"),
-            ]),
-            value=record_data.get('sample_status', 'no')
-        )
-        sample_container = ft.Column(visible=False)
+            # 3. 排污口编码
+            code_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="unknown", label="暂不掌握"),
+                    ft.Radio(value="known", label="已掌握"),
+                    ft.Radio(value="sign", label="现场标识牌显示"),
+                ]),
+                value=record_data.get('outlet_code_status', 'unknown')
+            )
+            outlet_code = ft.TextField(label="排污口编码", value=record_data.get('outlet_code', ''), width=300,
+                                       disabled=(record_data.get('outlet_code_status', 'unknown') == 'unknown'))
 
-        indicators = ["pH值", "化学需氧量", "氨氮", "总磷", "总氮"]
-        indicator_checkboxes = []
-        for ind in indicators:
-            cb = ft.Checkbox(label=ind, value=False)
-            indicator_checkboxes.append(cb)
+            def on_code_radio_change(e):
+                outlet_code.disabled = (code_radio.value == "unknown")
+                if code_radio.value == "unknown":
+                    outlet_code.value = ""
+                page.update()
+            code_radio.on_change = on_code_radio_change
 
-        if record_data.get('sample_indicators'):
-            try:
-                selected = json.loads(record_data['sample_indicators'])
-                for cb in indicator_checkboxes:
-                    if cb.label in selected:
-                        cb.value = True
-            except:
-                pass
+            # 4. 纳入国家平台
+            platform_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="1", label="是"),
+                    ft.Radio(value="0", label="否"),
+                    ft.Radio(value="2", label="需进一步核实"),
+                ]),
+                value=str(record_data.get('in_national_platform', '0'))
+            )
 
-        other_indicators = ft.TextField(label="其他选测指标", value=record_data.get('other_indicators', ''))
-        test_institution = ft.TextField(label="检测机构", value=record_data.get('test_institution', ''))
-        sample_arrive_time = ft.TextField(
-            label="样品送达时间",
-            value=record_data.get('sample_arrive_time', ''),
-            hint_text="例如 2025-03-11 16:00"
-        )
+            # 5. 行政区（五级）
+            province = ft.TextField(label="省（区）", value=record_data.get('province', ''))
+            city = ft.TextField(label="市（州、盟）", value=record_data.get('city', ''))
+            county = ft.TextField(label="县（区、旗、市）", value=record_data.get('county', ''))
+            town = ft.TextField(label="乡（镇、街道）", value=record_data.get('town', ''))
+            village = ft.TextField(label="村（社区）", value=record_data.get('village', ''))
 
-        sample_container.controls = [
-            ft.Text("送检指标（可多选）"),
-            ft.Column(indicator_checkboxes),
-            other_indicators,
-            test_institution,
-            sample_arrive_time,
-        ]
+            # 6. 经纬度
+            longitude = ft.TextField(label="经度", value=str(record_data.get('longitude', '')))
+            latitude = ft.TextField(label="纬度", value=str(record_data.get('latitude', '')))
+            def get_location(e):
+                longitude.value = "116.397428"
+                latitude.value = "39.90923"
+                page.update()
+            get_location_btn = ft.ElevatedButton("获取当前位置", on_click=get_location)
 
-        def on_sample_status_change(e):
-            sample_container.visible = (sample_status_radio.value == "yes")
-            page.update()
-        sample_status_radio.on_change = on_sample_status_change
-        on_sample_status_change(None)
+            # 7. 水体信息
+            water_body = ft.TextField(label="排入水体名称", value=record_data.get('water_body', ''))
+            water_func_zone1 = ft.TextField(label="一级水功能区名称", value=record_data.get('water_func_zone1', ''))
+            water_func_zone2 = ft.TextField(label="二级水功能区名称", value=record_data.get('water_func_zone2', ''))
+            downstream_section = ft.TextField(label="下游最近国控断面名称", value=record_data.get('downstream_section', ''))
+            downstream_distance = ft.TextField(label="距离 (km)", value=str(record_data.get('downstream_distance', '')))
 
-        # 16. 现场工作人员
-        leader = ft.TextField(label="负责人", value=record_data.get('leader', ''))
-        leader_phone = ft.TextField(label="联系电话", value=record_data.get('leader_phone', ''))
-        add_participant_btn = ft.ElevatedButton("+ 添加参加人员", on_click=add_participant)
+            # 8. 入河方式
+            entry_methods = ["明渠", "管道", "泵站", "涵闸", "箱涵", "其他"]
+            entry_dropdown = ft.Dropdown(
+                label="污水入河方式",
+                options=[ft.dropdown.Option(m) for m in entry_methods],
+                value=record_data.get('entry_method', '')
+            )
 
-        # 17. 备注
-        remark = ft.TextField(label="备注", value=record_data.get('remark', ''), multiline=True, min_lines=3)
+            # 9. 排污口分类
+            outlet_type_main_radio = ft.RadioGroup(
+                content=ft.Column([
+                    ft.Radio(value="工业排污口", label="工业排污口"),
+                    ft.Radio(value="城镇污水处理厂排污口", label="城镇污水处理厂排污口"),
+                    ft.Radio(value="农业排口", label="农业排口"),
+                    ft.Radio(value="其他排口", label="其他排口"),
+                    ft.Radio(value="暂无法确定", label="暂无法确定"),
+                ]),
+                value=record_data.get('outlet_type_main', '')
+            )
 
-        # ---------- 保存按钮逻辑 ----------
-        def save_record(e):
-            try:
-                task_val = task_source_radio.value
-                if task_val == "其他":
-                    task_val = "其他:" + other_task_field.value
+            sub_options = {
+                "工业排污口": ["工业企业排污口", "矿山排污口", "尾矿库排污口", "工业及其他各类园区污水处理厂排污口",
+                              "工业企业雨洪排口", "矿山雨洪排口", "尾矿库雨洪排口", "工业及其他各类园区污水处理厂雨洪排口"],
+                "农业排口": ["规模化畜禽养殖排污口", "规模化水产养殖排污口"],
+                "其他排口": ["大中型灌区排口", "港口码头排口", "规模以下畜禽养殖排污口", "规模以下水产养殖排污口",
+                            "城镇生活污水散排口", "农村污水处理设施排污口", "农村生活污水散排口", "城镇雨洪排口", "其他排污"],
+            }
 
-                # 收集责任主体
-                responsible_parties = []
-                for row in responsible_rows:
-                    name = row.controls[0].value
-                    industry = row.controls[1].value
-                    if name or industry:
-                        responsible_parties.append({"name": name, "industry": industry})
+            outlet_type_sub_dropdown = ft.Dropdown(
+                label="选择二级分类",
+                options=[],
+                visible=False,
+                width=300
+            )
+            outlet_type_sub_text = ft.TextField(label="具体情况", visible=False, width=300)
 
-                # 收集参加人员
-                participants_list = [row.value for row in participant_rows if row.value.strip()]
-
-                # 收集监测人员
-                monitor_people_list = [row.value for row in monitor_people_rows if row.value.strip()]
-
-                # 收集送检指标
-                selected_indicators = [cb.label for cb in indicator_checkboxes if cb.value]
-
-                data = {
-                    'create_time': datetime.now().isoformat(),
-                    'task_source': task_val,
-                    'outlet_name': outlet_name.value,
-                    'outlet_name_status': name_radio.value,
-                    'outlet_code': outlet_code.value,
-                    'outlet_code_status': code_radio.value,
-                    'province': province.value,
-                    'city': city.value,
-                    'county': county.value,
-                    'town': town.value,
-                    'village': village.value,
-                    'longitude': float(longitude.value) if longitude.value else 0.0,
-                    'latitude': float(latitude.value) if latitude.value else 0.0,
-                    'in_national_platform': int(platform_radio.value),
-                    'water_body': water_body.value,
-                    'water_func_zone1': water_func_zone1.value,
-                    'water_func_zone2': water_func_zone2.value,
-                    'downstream_section': downstream_section.value,
-                    'downstream_distance': float(downstream_distance.value) if downstream_distance.value else 0.0,
-                    'entry_method': entry_dropdown.value,
-                    'outlet_type_main': outlet_type_main_radio.value,
-                    'outlet_type_sub': outlet_type_sub_dropdown.value if outlet_type_sub_dropdown.visible else outlet_type_sub_text.value,
-                    'responsible_party_status': responsible_status_radio.value,
-                    'responsible_parties': json.dumps(responsible_parties, ensure_ascii=False),
-                    'is_discharging': is_discharging_radio.value,
-                    'color_desc': color_desc.value,
-                    'turbidity_desc': turbidity_desc.value,
-                    'odor_desc': odor_desc.value,
-                    'has_oil_film': oil_film_radio.value,
-                    'other_issues': other_issues.value,
-                    'photo1': photo_paths[0],
-                    'photo2': photo_paths[1],
-                    'photo3': photo_paths[2],
-                    'photo4': photo_paths[3],
-                    'monitor_status': monitor_status_radio.value,
-                    'monitor_unavailable_reason': monitor_unavailable_reason.value if monitor_status_radio.value == "unavailable" else '',
-                    'monitor_people': json.dumps(monitor_people_list, ensure_ascii=False),
-                    'monitor_start_time': monitor_start.value,
-                    'monitor_end_time': monitor_end.value,
-                    'flow_status': flow_status_radio.value,
-                    'flow_value': float(flow_value.value) if flow_status_radio.value == "measured" and flow_value.value else 0.0,
-                    'water_temp': float(water_temp.value) if water_temp.value else 0.0,
-                    'ph_value': float(ph_value.value) if ph_value.value else 0.0,
-                    'conductivity': float(conductivity.value) if conductivity.value else 0.0,
-                    'quick_cod': float(quick_cod.value) if quick_cod.value else 0.0,
-                    'quick_nh3n': float(quick_nh3n.value) if quick_nh3n.value else 0.0,
-                    'quick_tp': float(quick_tp.value) if quick_tp.value else 0.0,
-                    'quick_tn': float(quick_tn.value) if quick_tn.value else 0.0,
-                    'other_index': other_index.value,
-                    'monitor_photo1': monitor_photo_paths[0],
-                    'monitor_photo2': monitor_photo_paths[1],
-                    'monitor_photo3': monitor_photo_paths[2],
-                    'monitor_photo4': monitor_photo_paths[3],
-                    'sample_status': sample_status_radio.value,
-                    'sample_indicators': json.dumps(selected_indicators, ensure_ascii=False),
-                    'other_indicators': other_indicators.value,
-                    'test_institution': test_institution.value,
-                    'sample_arrive_time': sample_arrive_time.value,
-                    'leader': leader.value,
-                    'leader_phone': leader_phone.value,
-                    'participants': json.dumps(participants_list, ensure_ascii=False),
-                    'remark': remark.value,
-                }
-
-                if current_edit_id:
-                    db.update_record(current_edit_id, data)
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("更新成功！")))
+            def on_outlet_type_main_change(e):
+                main_val = outlet_type_main_radio.value
+                if main_val in sub_options:
+                    outlet_type_sub_dropdown.options = [ft.dropdown.Option(opt) for opt in sub_options[main_val]]
+                    outlet_type_sub_dropdown.value = record_data.get('outlet_type_sub', '') if record_data.get('outlet_type_main') == main_val else ''
+                    outlet_type_sub_dropdown.visible = True
+                    outlet_type_sub_text.visible = False
+                elif main_val == "暂无法确定":
+                    outlet_type_sub_dropdown.visible = False
+                    outlet_type_sub_text.visible = True
+                    outlet_type_sub_text.value = record_data.get('outlet_type_sub', '') if record_data.get('outlet_type_main') == "暂无法确定" else ''
                 else:
-                    db.insert_record(data)
-                    page.show_snack_bar(ft.SnackBar(content=ft.Text("保存成功！")))
-                show_list_view()
-            except Exception as ex:
-                page.show_snack_bar(ft.SnackBar(content=ft.Text(f"保存失败: {ex}")))
+                    outlet_type_sub_dropdown.visible = False
+                    outlet_type_sub_text.visible = False
+                page.update()
+            outlet_type_main_radio.on_change = on_outlet_type_main_change
 
-        save_btn = ft.ElevatedButton(
-            "保存记录",
-            on_click=save_record,
-            style=ft.ButtonStyle(color={"": ft.colors.WHITE}, bgcolor={"": ft.colors.BLUE_600}, padding=20),
-            width=300
-        )
-        back_btn = ft.IconButton(icon=ft.icons.ARROW_BACK, on_click=lambda e: show_list_view())
+            if record_data.get('outlet_type_main'):
+                on_outlet_type_main_change(None)
 
-        # ---------- 组装表单 ----------
+            # 10. 责任主体
+            responsible_status_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="unknown", label="暂无法确定，需进一步溯源"),
+                    ft.Radio(value="known", label="已确定"),
+                ]),
+                value=record_data.get('responsible_party_status', 'unknown')
+            )
+            responsible_container.visible = (responsible_status_radio.value == "known")
+            add_responsible_btn = ft.ElevatedButton("+ 添加责任主体", on_click=add_responsible, visible=False)
+
+            def on_responsible_status_change(e):
+                visible = (responsible_status_radio.value == "known")
+                responsible_container.visible = visible
+                add_responsible_btn.visible = visible
+                page.update()
+            responsible_status_radio.on_change = on_responsible_status_change
+            on_responsible_status_change(None)
+
+            # 11. 现场情况
+            is_discharging_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="是", label="是"),
+                    ft.Radio(value="否", label="否"),
+                ]),
+                value=record_data.get('is_discharging', '否')
+            )
+            color_desc = ft.TextField(label="颜色", value=record_data.get('color_desc', ''), visible=True)
+            turbidity_desc = ft.TextField(label="浑浊度", value=record_data.get('turbidity_desc', ''), visible=True)
+            odor_desc = ft.TextField(label="气味", value=record_data.get('odor_desc', ''), visible=True)
+
+            def on_is_discharging_change(e):
+                visible = (is_discharging_radio.value == "是")
+                color_desc.visible = visible
+                turbidity_desc.visible = visible
+                odor_desc.visible = visible
+                page.update()
+            is_discharging_radio.on_change = on_is_discharging_change
+            on_is_discharging_change(None)
+
+            oil_film_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="有", label="有"),
+                    ft.Radio(value="无", label="无"),
+                ]),
+                value=record_data.get('has_oil_film', '无')
+            )
+            other_issues = ft.TextField(label="其他问题或异常情况", value=record_data.get('other_issues', ''), multiline=True, min_lines=2)
+
+            # 12. 现场照片（4张）
+            photo_images = []
+            photo_buttons = []
+            photo_status_texts = []
+
+            for i in range(4):
+                img = ft.Image(width=200, height=150, fit=ft.ImageFit.CONTAIN, visible=False)
+                photo_images.append(img)
+                status = ft.Text(f"未拍摄", size=12)
+                photo_status_texts.append(status)
+
+                def take_photo(idx=i, target='general'):
+                    def on_file_picked(e):
+                        if e.files:
+                            path = e.files[0].path
+                            if target == 'general':
+                                photo_paths[idx] = path
+                                photo_images[idx].src = path
+                                photo_images[idx].visible = True
+                                photo_status_texts[idx].value = os.path.basename(path)
+                            else:
+                                monitor_photo_paths[idx] = path
+                                monitor_photo_images[idx].src = path
+                                monitor_photo_images[idx].visible = True
+                                monitor_photo_status_texts[idx].value = os.path.basename(path)
+                            page.update()
+                    file_picker = ft.FilePicker(on_result=on_file_picked)
+                    page.overlay.append(file_picker)
+                    page.update()
+                    file_picker.pick_files(allow_multiple=False, allowed_extensions=['jpg', 'jpeg', 'png'])
+
+                btn = ft.ElevatedButton(f"拍摄照片{i+1}", on_click=lambda e, idx=i, t='general': take_photo(idx, t))
+                photo_buttons.append(btn)
+
+            if record_id:
+                for i in range(4):
+                    path = photo_paths[i]
+                    if path and os.path.exists(path):
+                        photo_images[i].src = path
+                        photo_images[i].visible = True
+                        photo_status_texts[i].value = os.path.basename(path)
+
+            # 13. 监测照片
+            monitor_photo_images = []
+            monitor_photo_buttons = []
+            monitor_photo_status_texts = []
+
+            monitor_photo_labels = [
+                "监测采样点照片（展示测流及采样条件）",
+                "采样或测流工作照片",
+                "水样照片（可准确显示水样颜色和浑浊程度）",
+                "快检结果照片（各指标合拍）"
+            ]
+
+            for i in range(4):
+                img = ft.Image(width=200, height=150, fit=ft.ImageFit.CONTAIN, visible=False)
+                monitor_photo_images.append(img)
+                status = ft.Text(f"未拍摄", size=12)
+                monitor_photo_status_texts.append(status)
+
+                btn = ft.ElevatedButton(monitor_photo_labels[i], on_click=lambda e, idx=i, t='monitor': take_photo(idx, t))
+                monitor_photo_buttons.append(btn)
+
+            if record_id:
+                for i in range(4):
+                    path = monitor_photo_paths[i]
+                    if path and os.path.exists(path):
+                        monitor_photo_images[i].src = path
+                        monitor_photo_images[i].visible = True
+                        monitor_photo_status_texts[i].value = os.path.basename(path)
+
+            # 14. 现场监测
+            monitor_status_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="yes", label="是"),
+                    ft.Radio(value="no", label="否"),
+                    ft.Radio(value="unavailable", label="不具备条件"),
+                ]),
+                value=record_data.get('monitor_status', 'no')
+            )
+            monitor_unavailable_reason = ft.TextField(label="具体情况", visible=False, multiline=True)
+            monitor_container = ft.Column(visible=False)
+
+            # 时间字段（改为普通文本框，无按钮）
+            monitor_start = ft.TextField(
+                label="监测开始时间",
+                value=record_data.get('monitor_start_time', ''),
+                hint_text="例如 2025-03-11 14:30"
+            )
+            monitor_end = ft.TextField(
+                label="监测结束时间",
+                value=record_data.get('monitor_end_time', ''),
+                hint_text="例如 2025-03-11 15:30"
+            )
+
+            flow_status_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="unavailable", label="不具备测定条件"),
+                    ft.Radio(value="unmeasured", label="未测定"),
+                    ft.Radio(value="measured", label="现场测定"),
+                ]),
+                value=record_data.get('flow_status', 'unmeasured')
+            )
+            flow_value = ft.TextField(label="流量 (m³/s)", value=str(record_data.get('flow_value', '')), visible=False)
+            water_temp = ft.TextField(label="水温 (℃)", value=str(record_data.get('water_temp', '')))
+            ph_value = ft.TextField(label="pH值", value=str(record_data.get('ph_value', '')))
+            conductivity = ft.TextField(label="电导率 (μs/cm)", value=str(record_data.get('conductivity', '')))
+            quick_cod = ft.TextField(label="COD (mg/L)", value=str(record_data.get('quick_cod', '')))
+            quick_nh3n = ft.TextField(label="氨氮 (mg/L)", value=str(record_data.get('quick_nh3n', '')))
+            quick_tp = ft.TextField(label="总磷 (mg/L)", value=str(record_data.get('quick_tp', '')))
+            quick_tn = ft.TextField(label="总氮 (mg/L)", value=str(record_data.get('quick_tn', '')))
+            other_index = ft.TextField(label="其他指标", value=record_data.get('other_index', ''))
+
+            def on_flow_status_change(e):
+                flow_value.visible = (flow_status_radio.value == "measured")
+                page.update()
+            flow_status_radio.on_change = on_flow_status_change
+
+            monitor_container.controls = [
+                ft.Text("监测人员（至少2人）"),
+                monitor_people_container,
+                ft.ElevatedButton("+ 添加监测人员", on_click=add_monitor_people),
+                monitor_start,
+                monitor_end,
+                ft.Text("流量测定"),
+                flow_status_radio,
+                flow_value,
+                water_temp,
+                ph_value,
+                conductivity,
+                quick_cod,
+                quick_nh3n,
+                quick_tp,
+                quick_tn,
+                other_index,
+                ft.Divider(),
+                ft.Text("监测现场照片"),
+                ft.Column([
+                    ft.Row([monitor_photo_buttons[0], monitor_photo_status_texts[0]]),
+                    monitor_photo_images[0],
+                    ft.Row([monitor_photo_buttons[1], monitor_photo_status_texts[1]]),
+                    monitor_photo_images[1],
+                    ft.Row([monitor_photo_buttons[2], monitor_photo_status_texts[2]]),
+                    monitor_photo_images[2],
+                    ft.Row([monitor_photo_buttons[3], monitor_photo_status_texts[3]]),
+                    monitor_photo_images[3],
+                ]),
+            ]
+
+            def on_monitor_status_change(e):
+                status = monitor_status_radio.value
+                monitor_unavailable_reason.visible = (status == "unavailable")
+                monitor_container.visible = (status == "yes")
+                page.update()
+            monitor_status_radio.on_change = on_monitor_status_change
+            on_monitor_status_change(None)
+
+            # 15. 采样送检
+            sample_status_radio = ft.RadioGroup(
+                content=ft.Row([
+                    ft.Radio(value="yes", label="是"),
+                    ft.Radio(value="no", label="否"),
+                ]),
+                value=record_data.get('sample_status', 'no')
+            )
+            sample_container = ft.Column(visible=False)
+
+            indicators = ["pH值", "化学需氧量", "氨氮", "总磷", "总氮"]
+            indicator_checkboxes = []
+            for ind in indicators:
+                cb = ft.Checkbox(label=ind, value=False)
+                indicator_checkboxes.append(cb)
+
+            if record_data.get('sample_indicators'):
+                try:
+                    selected = json.loads(record_data['sample_indicators'])
+                    for cb in indicator_checkboxes:
+                        if cb.label in selected:
+                            cb.value = True
+                except:
+                    pass
+
+            other_indicators = ft.TextField(label="其他选测指标", value=record_data.get('other_indicators', ''))
+            test_institution = ft.TextField(label="检测机构", value=record_data.get('test_institution', ''))
+            sample_arrive_time = ft.TextField(
+                label="样品送达时间",
+                value=record_data.get('sample_arrive_time', ''),
+                hint_text="例如 2025-03-11 16:00"
+            )
+
+            sample_container.controls = [
+                ft.Text("送检指标（可多选）"),
+                ft.Column(indicator_checkboxes),
+                other_indicators,
+                test_institution,
+                sample_arrive_time,
+            ]
+
+            def on_sample_status_change(e):
+                sample_container.visible = (sample_status_radio.value == "yes")
+                page.update()
+            sample_status_radio.on_change = on_sample_status_change
+            on_sample_status_change(None)
+
+            # 16. 现场工作人员
+            leader = ft.TextField(label="负责人", value=record_data.get('leader', ''))
+            leader_phone = ft.TextField(label="联系电话", value=record_data.get('leader_phone', ''))
+            add_participant_btn = ft.ElevatedButton("+ 添加参加人员", on_click=add_participant)
+
+            # 17. 备注
+            remark = ft.TextField(label="备注", value=record_data.get('remark', ''), multiline=True, min_lines=3)
+
+            # ---------- 保存按钮逻辑 ----------
+            def save_record(e):
+                try:
+                    task_val = task_source_radio.value
+                    if task_val == "其他":
+                        task_val = "其他:" + other_task_field.value
+
+                    # 收集责任主体
+                    responsible_parties = []
+                    for row in responsible_rows:
+                        name = row.controls[0].value
+                        industry = row.controls[1].value
+                        if name or industry:
+                            responsible_parties.append({"name": name, "industry": industry})
+
+                    # 收集参加人员
+                    participants_list = [row.value for row in participant_rows if row.value.strip()]
+
+                    # 收集监测人员
+                    monitor_people_list = [row.value for row in monitor_people_rows if row.value.strip()]
+
+                    # 收集送检指标
+                    selected_indicators = [cb.label for cb in indicator_checkboxes if cb.value]
+
+                    data = {
+                        'create_time': datetime.now().isoformat(),
+                        'task_source': task_val,
+                        'outlet_name': outlet_name.value,
+                        'outlet_name_status': name_radio.value,
+                        'outlet_code': outlet_code.value,
+                        'outlet_code_status': code_radio.value,
+                        'province': province.value,
+                        'city': city.value,
+                        'county': county.value,
+                        'town': town.value,
+                        'village': village.value,
+                        'longitude': float(longitude.value) if longitude.value else 0.0,
+                        'latitude': float(latitude.value) if latitude.value else 0.0,
+                        'in_national_platform': int(platform_radio.value),
+                        'water_body': water_body.value,
+                        'water_func_zone1': water_func_zone1.value,
+                        'water_func_zone2': water_func_zone2.value,
+                        'downstream_section': downstream_section.value,
+                        'downstream_distance': float(downstream_distance.value) if downstream_distance.value else 0.0,
+                        'entry_method': entry_dropdown.value,
+                        'outlet_type_main': outlet_type_main_radio.value,
+                        'outlet_type_sub': outlet_type_sub_dropdown.value if outlet_type_sub_dropdown.visible else outlet_type_sub_text.value,
+                        'responsible_party_status': responsible_status_radio.value,
+                        'responsible_parties': json.dumps(responsible_parties, ensure_ascii=False),
+                        'is_discharging': is_discharging_radio.value,
+                        'color_desc': color_desc.value,
+                        'turbidity_desc': turbidity_desc.value,
+                        'odor_desc': odor_desc.value,
+                        'has_oil_film': oil_film_radio.value,
+                        'other_issues': other_issues.value,
+                        'photo1': photo_paths[0],
+                        'photo2': photo_paths[1],
+                        'photo3': photo_paths[2],
+                        'photo4': photo_paths[3],
+                        'monitor_status': monitor_status_radio.value,
+                        'monitor_unavailable_reason': monitor_unavailable_reason.value if monitor_status_radio.value == "unavailable" else '',
+                        'monitor_people': json.dumps(monitor_people_list, ensure_ascii=False),
+                        'monitor_start_time': monitor_start.value,
+                        'monitor_end_time': monitor_end.value,
+                        'flow_status': flow_status_radio.value,
+                        'flow_value': float(flow_value.value) if flow_status_radio.value == "measured" and flow_value.value else 0.0,
+                        'water_temp': float(water_temp.value) if water_temp.value else 0.0,
+                        'ph_value': float(ph_value.value) if ph_value.value else 0.0,
+                        'conductivity': float(conductivity.value) if conductivity.value else 0.0,
+                        'quick_cod': float(quick_cod.value) if quick_cod.value else 0.0,
+                        'quick_nh3n': float(quick_nh3n.value) if quick_nh3n.value else 0.0,
+                        'quick_tp': float(quick_tp.value) if quick_tp.value else 0.0,
+                        'quick_tn': float(quick_tn.value) if quick_tn.value else 0.0,
+                        'other_index': other_index.value,
+                        'monitor_photo1': monitor_photo_paths[0],
+                        'monitor_photo2': monitor_photo_paths[1],
+                        'monitor_photo3': monitor_photo_paths[2],
+                        'monitor_photo4': monitor_photo_paths[3],
+                        'sample_status': sample_status_radio.value,
+                        'sample_indicators': json.dumps(selected_indicators, ensure_ascii=False),
+                        'other_indicators': other_indicators.value,
+                        'test_institution': test_institution.value,
+                        'sample_arrive_time': sample_arrive_time.value,
+                        'leader': leader.value,
+                        'leader_phone': leader_phone.value,
+                        'participants': json.dumps(participants_list, ensure_ascii=False),
+                        'remark': remark.value,
+                    }
+
+                    if current_edit_id:
+                        db.update_record(current_edit_id, data)
+                        page.show_snack_bar(ft.SnackBar(content=ft.Text("更新成功！")))
+                    else:
+                        db.insert_record(data)
+                        page.show_snack_bar(ft.SnackBar(content=ft.Text("保存成功！")))
+                    show_list_view()
+                except Exception as ex:
+                    page.show_snack_bar(ft.SnackBar(content=ft.Text(f"保存失败: {ex}")))
+
+            save_btn = ft.ElevatedButton(
+                "保存记录",
+                on_click=save_record,
+                style=ft.ButtonStyle(color={"": ft.colors.WHITE}, bgcolor={"": ft.colors.BLUE_600}, padding=20),
+                width=300
+            )
+            back_btn = ft.IconButton(icon=ft.icons.ARROW_BACK, on_click=lambda e: show_list_view())
+
+            # ---------- 组装表单 ----------
+            page.add(
+                ft.Row([back_btn, ft.Text("现场记录表单", size=20, weight=ft.FontWeight.BOLD)]),
+                ft.Divider(),
+                ft.Text("任务来源", size=16, weight=ft.FontWeight.BOLD),
+                task_source_radio,
+                other_task_field,
+                ft.Divider(),
+                ft.Text("排污口名称", size=16, weight=ft.FontWeight.BOLD),
+                name_radio,
+                outlet_name,
+                ft.Text("排污口编码", size=16, weight=ft.FontWeight.BOLD),
+                code_radio,
+                outlet_code,
+                ft.Divider(),
+                ft.Text("纳入国家平台", size=16, weight=ft.FontWeight.BOLD),
+                platform_radio,
+                ft.Divider(),
+                ft.Text("位置信息", size=16, weight=ft.FontWeight.BOLD),
+                province,
+                city,
+                county,
+                town,
+                village,
+                get_location_btn,
+                longitude,
+                latitude,
+                ft.Divider(),
+                ft.Text("水体信息", size=16, weight=ft.FontWeight.BOLD),
+                water_body,
+                water_func_zone1,
+                water_func_zone2,
+                downstream_section,
+                downstream_distance,
+                ft.Divider(),
+                ft.Text("入河方式", size=16, weight=ft.FontWeight.BOLD),
+                entry_dropdown,
+                ft.Divider(),
+                ft.Text("排污口分类", size=16, weight=ft.FontWeight.BOLD),
+                outlet_type_main_radio,
+                outlet_type_sub_dropdown,
+                outlet_type_sub_text,
+                ft.Divider(),
+                ft.Text("责任主体", size=16, weight=ft.FontWeight.BOLD),
+                responsible_status_radio,
+                responsible_container,
+                add_responsible_btn,
+                ft.Divider(),
+                ft.Text("现场情况", size=16, weight=ft.FontWeight.BOLD),
+                ft.Text("正在排放污水:"),
+                is_discharging_radio,
+                color_desc,
+                turbidity_desc,
+                odor_desc,
+                ft.Text("水面有无油膜:"),
+                oil_film_radio,
+                other_issues,
+                ft.Divider(),
+                ft.Text("现场照片", size=16, weight=ft.FontWeight.BOLD),
+                ft.Column([
+                    ft.Row([photo_buttons[0], photo_status_texts[0]]),
+                    photo_images[0],
+                    ft.Row([photo_buttons[1], photo_status_texts[1]]),
+                    photo_images[1],
+                    ft.Row([photo_buttons[2], photo_status_texts[2]]),
+                    photo_images[2],
+                    ft.Row([photo_buttons[3], photo_status_texts[3]]),
+                    photo_images[3],
+                ]),
+                ft.Divider(),
+                ft.Text("现场监测", size=16, weight=ft.FontWeight.BOLD),
+                monitor_status_radio,
+                monitor_unavailable_reason,
+                monitor_container,
+                ft.Divider(),
+                ft.Text("采样送检", size=16, weight=ft.FontWeight.BOLD),
+                sample_status_radio,
+                sample_container,
+                ft.Divider(),
+                ft.Text("现场工作人员", size=16, weight=ft.FontWeight.BOLD),
+                leader,
+                leader_phone,
+                ft.Text("参加人员:"),
+                participants_container,
+                add_participant_btn,
+                ft.Divider(),
+                ft.Text("备注", size=16, weight=ft.FontWeight.BOLD),
+                remark,
+                ft.Divider(),
+                ft.Row([save_btn], alignment=ft.MainAxisAlignment.CENTER)
+            )
+            page.update()
+
+        # 启动列表页
+        show_list_view()
+
+    except Exception as e:
+        # 捕获任何初始化异常并显示在页面上
+        page.clean()
         page.add(
-            ft.Row([back_btn, ft.Text("现场记录表单", size=20, weight=ft.FontWeight.BOLD)]),
-            ft.Divider(),
-            ft.Text("任务来源", size=16, weight=ft.FontWeight.BOLD),
-            task_source_radio,
-            other_task_field,
-            ft.Divider(),
-            ft.Text("排污口名称", size=16, weight=ft.FontWeight.BOLD),
-            name_radio,
-            outlet_name,
-            ft.Text("排污口编码", size=16, weight=ft.FontWeight.BOLD),
-            code_radio,
-            outlet_code,
-            ft.Divider(),
-            ft.Text("纳入国家平台", size=16, weight=ft.FontWeight.BOLD),
-            platform_radio,
-            ft.Divider(),
-            ft.Text("位置信息", size=16, weight=ft.FontWeight.BOLD),
-            province,
-            city,
-            county,
-            town,
-            village,
-            get_location_btn,
-            longitude,
-            latitude,
-            ft.Divider(),
-            ft.Text("水体信息", size=16, weight=ft.FontWeight.BOLD),
-            water_body,
-            water_func_zone1,
-            water_func_zone2,
-            downstream_section,
-            downstream_distance,
-            ft.Divider(),
-            ft.Text("入河方式", size=16, weight=ft.FontWeight.BOLD),
-            entry_dropdown,
-            ft.Divider(),
-            ft.Text("排污口分类", size=16, weight=ft.FontWeight.BOLD),
-            outlet_type_main_radio,
-            outlet_type_sub_dropdown,
-            outlet_type_sub_text,
-            ft.Divider(),
-            ft.Text("责任主体", size=16, weight=ft.FontWeight.BOLD),
-            responsible_status_radio,
-            responsible_container,
-            add_responsible_btn,
-            ft.Divider(),
-            ft.Text("现场情况", size=16, weight=ft.FontWeight.BOLD),
-            ft.Text("正在排放污水:"),
-            is_discharging_radio,
-            color_desc,
-            turbidity_desc,
-            odor_desc,
-            ft.Text("水面有无油膜:"),
-            oil_film_radio,
-            other_issues,
-            ft.Divider(),
-            ft.Text("现场照片", size=16, weight=ft.FontWeight.BOLD),
-            ft.Column([
-                ft.Row([photo_buttons[0], photo_status_texts[0]]),
-                photo_images[0],
-                ft.Row([photo_buttons[1], photo_status_texts[1]]),
-                photo_images[1],
-                ft.Row([photo_buttons[2], photo_status_texts[2]]),
-                photo_images[2],
-                ft.Row([photo_buttons[3], photo_status_texts[3]]),
-                photo_images[3],
-            ]),
-            ft.Divider(),
-            ft.Text("现场监测", size=16, weight=ft.FontWeight.BOLD),
-            monitor_status_radio,
-            monitor_unavailable_reason,
-            monitor_container,
-            ft.Divider(),
-            ft.Text("采样送检", size=16, weight=ft.FontWeight.BOLD),
-            sample_status_radio,
-            sample_container,
-            ft.Divider(),
-            ft.Text("现场工作人员", size=16, weight=ft.FontWeight.BOLD),
-            leader,
-            leader_phone,
-            ft.Text("参加人员:"),
-            participants_container,
-            add_participant_btn,
-            ft.Divider(),
-            ft.Text("备注", size=16, weight=ft.FontWeight.BOLD),
-            remark,
-            ft.Divider(),
-            ft.Row([save_btn], alignment=ft.MainAxisAlignment.CENTER)
+            ft.Text("应用启动失败，错误信息如下：", size=20, color=ft.colors.RED),
+            ft.Text(str(e), size=14, selectable=True),
+            ft.Text("请将此错误信息截图反馈给开发者。", size=14)
         )
         page.update()
-
-    show_list_view()
 
 if __name__ == "__main__":
     ft.app(target=main)
