@@ -41,7 +41,7 @@ jobs:
 
       - name: Replace main.py
         run: |
-          cp main.py temp_app/src/main.py
+          cp main.py temp_app/main.py
 
       - name: Upload Flutter project (for debugging)
         uses: actions/upload-artifact@v4
