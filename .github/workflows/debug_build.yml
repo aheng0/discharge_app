@@ -1,4 +1,4 @@
-name: Debug Build with Flutter Project
+name: Debug Build with Flutter Project (Fixed)
 
 on:
   workflow_dispatch:
@@ -35,34 +35,45 @@ jobs:
         run: |
           pip install flet==0.24.1
 
-      - name: Create Flet project
+      - name: Try flet build with --project-dir
+        id: build_with_dir
+        continue-on-error: true
         run: |
-          flet create temp_app
+          flet build apk --project-dir ./flutter_project --verbose
+          echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: List directory contents (diagnostic)
+      - name: If --project-dir failed, capture temp project
+        if: steps.build_with_dir.outputs.status != 'success'
         run: |
-          echo "Contents of temp_app root:"
-          ls -la temp_app/
-          echo "Searching for pubspec.yaml in temp_app:"
-          find temp_app -name "pubspec.yaml"
+          # Run flet build in background
+          flet build apk --verbose &
+          BUILD_PID=$!
+          # Wait for project creation (adjust sleep if needed)
+          sleep 15
+          # Find the most recent flet temp directory
+          FLUTTER_PROJECT_DIR=$(find /tmp -maxdepth 1 -type d -name "flet_*" 2>/dev/null | sort -r | head -1)
+          if [ -n "$FLUTTER_PROJECT_DIR" ]; then
+            echo "Found Flutter project at $FLUTTER_PROJECT_DIR"
+            cp -r "$FLUTTER_PROJECT_DIR" ./flutter_project
+          else
+            echo "No Flutter project found in /tmp"
+          fi
+          # Wait for build to complete
+          wait $BUILD_PID
 
-      - name: Replace main.py
-        run: |
-          cp main.py temp_app/main.py
-
-      - name: Build APK with Flutter
-        working-directory: ./temp_app
-        run: |
-          flutter build apk --release
-
-      - name: Upload Flutter project (for debugging)
+      - name: Upload Flutter project (if captured)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flutter-project
-          path: temp_app/
+          path: ./flutter_project
 
-      - name: Upload APK
+      - name: Upload APK (if generated)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: temp_app/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            ./flutter_project/build/apk/app-release.apk
+            ./build/apk/app-release.apk
+          continue-on-error: true
