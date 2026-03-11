@@ -1,17 +1,35 @@
-# 入河排污口现场工作记录App - 最终兼容版（添加错误捕获）
+# 入河排污口现场工作记录App - 终极调试版（分步显示）
 import flet as ft
 import sqlite3
 import json
 import csv
 import os
 import base64
+import traceback
 from datetime import datetime
+
+# 全局调试信息列表（将在屏幕上显示）
+debug_messages = []
+
+def debug_print(page, msg):
+    """在屏幕上添加调试信息并更新页面"""
+    debug_messages.append(msg)
+    if page and page.controls:
+        # 如果页面已有控件，直接添加文本
+        page.add(ft.Text(msg, size=12, color=ft.colors.BLUE))
+    page.update()
 
 # ==================== 数据库操作类 ====================
 class Database:
-    def __init__(self):
-        self.conn = sqlite3.connect('records.db', check_same_thread=False)
-        self.create_table()
+    def __init__(self, page=None):
+        self.page = page
+        try:
+            debug_print(page, "数据库初始化...")
+            self.conn = sqlite3.connect('records.db', check_same_thread=False)
+            self.create_table()
+            debug_print(page, "数据库连接成功")
+        except Exception as e:
+            debug_print(page, f"数据库错误: {e}")
 
     def create_table(self):
         cursor = self.conn.cursor()
@@ -72,6 +90,7 @@ class Database:
         ''')
         self.conn.commit()
 
+    # ... 其他方法保持不变（insert_record, update_record 等）
     def insert_record(self, data):
         cursor = self.conn.cursor()
         columns = ','.join(data.keys())
@@ -396,23 +415,38 @@ def export_to_excel(db, page):
 
 # ==================== 主程序 ====================
 def main(page: ft.Page):
-    try:  # 全局异常捕获
+    # 首先在屏幕上显示调试信息
+    page.clean()
+    page.add(ft.Text("=== 启动调试信息 ===", size=16, weight=ft.FontWeight.BOLD))
+    page.update()
+
+    try:
+        debug_print(page, "1. main 函数开始执行")
+
         page.title = "入河排污口现场记录"
         page.theme_mode = ft.ThemeMode.LIGHT
         page.padding = 20
         page.scroll = ft.ScrollMode.AUTO
         page.window.width = 400
         page.window.height = 700
+        debug_print(page, "2. 页面基本设置完成")
 
-        db = Database()
+        # 将 page 传递给数据库，以便数据库也能输出调试信息
+        debug_print(page, "3. 正在初始化数据库...")
+        db = Database(page=page)
+
         current_edit_id = None
         photo_paths = ["", "", "", ""]
         monitor_photo_paths = ["", "", "", ""]
 
+        debug_print(page, "4. 变量初始化完成")
+
         # ========== 列表页 ==========
         def show_list_view():
+            debug_print(page, "5. show_list_view 被调用")
             page.clean()
             records = db.get_all_records()
+            debug_print(page, f"6. 获取到 {len(records)} 条记录")
             record_cards = []
             for record in records:
                 record_id, create_time, outlet_name = record
@@ -438,6 +472,7 @@ def main(page: ft.Page):
                     )
                 )
                 record_cards.append(card)
+                debug_print(page, f"7. 添加卡片: {outlet_name}")
 
             if not record_cards:
                 record_cards.append(ft.Text("暂无记录，点击下方+号添加"))
@@ -454,19 +489,23 @@ def main(page: ft.Page):
                 ft.Column(record_cards, scroll=ft.ScrollMode.AUTO, expand=True),
             )
             page.update()
+            debug_print(page, "8. 列表页面渲染完成")
 
         def delete_record(record_id):
+            debug_print(page, f"删除记录 {record_id}")
             db.delete_record(record_id)
             page.show_snack_bar(ft.SnackBar(content=ft.Text("删除成功")))
             show_list_view()
 
         # ========== 表单页 ==========
         def show_form_view(record_id=None):
+            debug_print(page, f"9. show_form_view 被调用，record_id={record_id}")
             page.clean()
             nonlocal current_edit_id, photo_paths, monitor_photo_paths
             current_edit_id = record_id
             photo_paths = ["", "", "", ""]
             monitor_photo_paths = ["", "", "", ""]
+            debug_print(page, "10. 表单变量重置")
 
             record_data = {}
             if record_id:
@@ -474,6 +513,7 @@ def main(page: ft.Page):
                 for i in range(4):
                     photo_paths[i] = record_data.get(f'photo{i+1}', '')
                     monitor_photo_paths[i] = record_data.get(f'monitor_photo{i+1}', '')
+                debug_print(page, f"11. 加载编辑数据，照片路径 {photo_paths}")
 
             # ---------- 工具函数：动态添加行 ----------
             participant_rows = []
@@ -483,12 +523,14 @@ def main(page: ft.Page):
                 participant_rows.append(ft.TextField(label="参加人员", width=300))
                 participants_container.controls = participant_rows
                 page.update()
+                debug_print(page, "12. 添加参加人员")
 
             if record_data.get('participants'):
                 try:
                     part_list = json.loads(record_data['participants'])
                     for name in part_list:
                         participant_rows.append(ft.TextField(value=name, label="参加人员", width=300))
+                    debug_print(page, f"13. 加载已有参加人员 {part_list}")
                 except:
                     pass
             participants_container.controls = participant_rows
@@ -507,12 +549,14 @@ def main(page: ft.Page):
                 responsible_rows.append(create_responsible_row())
                 responsible_container.controls = responsible_rows
                 page.update()
+                debug_print(page, "14. 添加责任主体")
 
             if record_data.get('responsible_parties'):
                 try:
                     parties = json.loads(record_data['responsible_parties'])
                     for p in parties:
                         responsible_rows.append(create_responsible_row(p.get('name', ''), p.get('industry', '')))
+                    debug_print(page, f"15. 加载已有责任主体 {parties}")
                 except:
                     pass
             responsible_container.controls = responsible_rows
@@ -525,19 +569,24 @@ def main(page: ft.Page):
                 monitor_people_rows.append(ft.TextField(label="监测人员", width=300))
                 monitor_people_container.controls = monitor_people_rows
                 page.update()
+                debug_print(page, "16. 添加监测人员")
 
             if record_data.get('monitor_people'):
                 try:
                     people_list = json.loads(record_data['monitor_people'])
                     for name in people_list:
                         monitor_people_rows.append(ft.TextField(value=name, label="监测人员", width=300))
+                    debug_print(page, f"17. 加载已有监测人员 {people_list}")
                 except:
                     pass
             else:
                 monitor_people_rows = [ft.TextField(label="监测人员", width=300) for _ in range(2)]
+                debug_print(page, "18. 创建默认两个监测人员空行")
             monitor_people_container.controls = monitor_people_rows
 
             # ---------- 创建表单控件 ----------
+            debug_print(page, "19. 开始创建表单控件")
+
             # 1. 任务来源
             task_source_radio = ft.RadioGroup(
                 content=ft.Column([
@@ -559,6 +608,7 @@ def main(page: ft.Page):
                 task_source_radio.value = "其他"
                 other_task_field.value = record_data['task_source'][3:]
                 other_task_field.visible = True
+                debug_print(page, "20. 任务来源加载完成")
 
             # 2. 排污口名称
             name_radio = ft.RadioGroup(
@@ -578,6 +628,7 @@ def main(page: ft.Page):
                     outlet_name.value = ""
                 page.update()
             name_radio.on_change = on_name_radio_change
+            debug_print(page, "21. 排污口名称控件创建")
 
             # 3. 排污口编码
             code_radio = ft.RadioGroup(
@@ -597,6 +648,7 @@ def main(page: ft.Page):
                     outlet_code.value = ""
                 page.update()
             code_radio.on_change = on_code_radio_change
+            debug_print(page, "22. 排污口编码控件创建")
 
             # 4. 纳入国家平台
             platform_radio = ft.RadioGroup(
@@ -607,6 +659,7 @@ def main(page: ft.Page):
                 ]),
                 value=str(record_data.get('in_national_platform', '0'))
             )
+            debug_print(page, "23. 国家平台控件创建")
 
             # 5. 行政区（五级）
             province = ft.TextField(label="省（区）", value=record_data.get('province', ''))
@@ -614,6 +667,7 @@ def main(page: ft.Page):
             county = ft.TextField(label="县（区、旗、市）", value=record_data.get('county', ''))
             town = ft.TextField(label="乡（镇、街道）", value=record_data.get('town', ''))
             village = ft.TextField(label="村（社区）", value=record_data.get('village', ''))
+            debug_print(page, "24. 行政区控件创建")
 
             # 6. 经纬度
             longitude = ft.TextField(label="经度", value=str(record_data.get('longitude', '')))
@@ -623,6 +677,7 @@ def main(page: ft.Page):
                 latitude.value = "39.90923"
                 page.update()
             get_location_btn = ft.ElevatedButton("获取当前位置", on_click=get_location)
+            debug_print(page, "25. 经纬度控件创建")
 
             # 7. 水体信息
             water_body = ft.TextField(label="排入水体名称", value=record_data.get('water_body', ''))
@@ -630,6 +685,7 @@ def main(page: ft.Page):
             water_func_zone2 = ft.TextField(label="二级水功能区名称", value=record_data.get('water_func_zone2', ''))
             downstream_section = ft.TextField(label="下游最近国控断面名称", value=record_data.get('downstream_section', ''))
             downstream_distance = ft.TextField(label="距离 (km)", value=str(record_data.get('downstream_distance', '')))
+            debug_print(page, "26. 水体信息控件创建")
 
             # 8. 入河方式
             entry_methods = ["明渠", "管道", "泵站", "涵闸", "箱涵", "其他"]
@@ -638,6 +694,7 @@ def main(page: ft.Page):
                 options=[ft.dropdown.Option(m) for m in entry_methods],
                 value=record_data.get('entry_method', '')
             )
+            debug_print(page, "27. 入河方式控件创建")
 
             # 9. 排污口分类
             outlet_type_main_radio = ft.RadioGroup(
@@ -686,6 +743,7 @@ def main(page: ft.Page):
 
             if record_data.get('outlet_type_main'):
                 on_outlet_type_main_change(None)
+            debug_print(page, "28. 排污口分类控件创建")
 
             # 10. 责任主体
             responsible_status_radio = ft.RadioGroup(
@@ -705,6 +763,7 @@ def main(page: ft.Page):
                 page.update()
             responsible_status_radio.on_change = on_responsible_status_change
             on_responsible_status_change(None)
+            debug_print(page, "29. 责任主体控件创建")
 
             # 11. 现场情况
             is_discharging_radio = ft.RadioGroup(
@@ -735,6 +794,7 @@ def main(page: ft.Page):
                 value=record_data.get('has_oil_film', '无')
             )
             other_issues = ft.TextField(label="其他问题或异常情况", value=record_data.get('other_issues', ''), multiline=True, min_lines=2)
+            debug_print(page, "30. 现场情况控件创建")
 
             # 12. 现场照片（4张）
             photo_images = []
@@ -777,6 +837,7 @@ def main(page: ft.Page):
                         photo_images[i].src = path
                         photo_images[i].visible = True
                         photo_status_texts[i].value = os.path.basename(path)
+            debug_print(page, "31. 现场照片控件创建")
 
             # 13. 监测照片
             monitor_photo_images = []
@@ -806,6 +867,7 @@ def main(page: ft.Page):
                         monitor_photo_images[i].src = path
                         monitor_photo_images[i].visible = True
                         monitor_photo_status_texts[i].value = os.path.basename(path)
+            debug_print(page, "32. 监测照片控件创建")
 
             # 14. 现场监测
             monitor_status_radio = ft.RadioGroup(
@@ -819,7 +881,6 @@ def main(page: ft.Page):
             monitor_unavailable_reason = ft.TextField(label="具体情况", visible=False, multiline=True)
             monitor_container = ft.Column(visible=False)
 
-            # 时间字段（改为普通文本框，无按钮）
             monitor_start = ft.TextField(
                 label="监测开始时间",
                 value=record_data.get('monitor_start_time', ''),
@@ -892,6 +953,7 @@ def main(page: ft.Page):
                 page.update()
             monitor_status_radio.on_change = on_monitor_status_change
             on_monitor_status_change(None)
+            debug_print(page, "33. 现场监测控件创建")
 
             # 15. 采样送检
             sample_status_radio = ft.RadioGroup(
@@ -939,18 +1001,22 @@ def main(page: ft.Page):
                 page.update()
             sample_status_radio.on_change = on_sample_status_change
             on_sample_status_change(None)
+            debug_print(page, "34. 采样送检控件创建")
 
             # 16. 现场工作人员
             leader = ft.TextField(label="负责人", value=record_data.get('leader', ''))
             leader_phone = ft.TextField(label="联系电话", value=record_data.get('leader_phone', ''))
             add_participant_btn = ft.ElevatedButton("+ 添加参加人员", on_click=add_participant)
+            debug_print(page, "35. 现场工作人员控件创建")
 
             # 17. 备注
             remark = ft.TextField(label="备注", value=record_data.get('remark', ''), multiline=True, min_lines=3)
+            debug_print(page, "36. 备注控件创建")
 
             # ---------- 保存按钮逻辑 ----------
             def save_record(e):
                 try:
+                    debug_print(page, "37. 开始保存记录")
                     task_val = task_source_radio.value
                     if task_val == "其他":
                         task_val = "其他:" + other_task_field.value
@@ -1045,6 +1111,7 @@ def main(page: ft.Page):
                         page.show_snack_bar(ft.SnackBar(content=ft.Text("保存成功！")))
                     show_list_view()
                 except Exception as ex:
+                    debug_print(page, f"保存失败: {ex}")
                     page.show_snack_bar(ft.SnackBar(content=ft.Text(f"保存失败: {ex}")))
 
             save_btn = ft.ElevatedButton(
@@ -1147,17 +1214,23 @@ def main(page: ft.Page):
                 ft.Row([save_btn], alignment=ft.MainAxisAlignment.CENTER)
             )
             page.update()
+            debug_print(page, "38. 表单页面渲染完成")
 
         # 启动列表页
+        debug_print(page, "39. 准备调用 show_list_view")
         show_list_view()
+        debug_print(page, "40. show_list_view 执行完毕")
 
     except Exception as e:
-        # 捕获任何初始化异常并显示在页面上
+        # 捕获任何异常并在屏幕上显示
+        error_msg = f"启动失败: {str(e)}\n{traceback.format_exc()}"
+        debug_print(page, error_msg)
         page.clean()
         page.add(
-            ft.Text("应用启动失败，错误信息如下：", size=20, color=ft.colors.RED),
+            ft.Text("启动失败，错误信息：", size=20, color=ft.colors.RED),
             ft.Text(str(e), size=14, selectable=True),
-            ft.Text("请将此错误信息截图反馈给开发者。", size=14)
+            ft.Text("详细堆栈：", size=16),
+            ft.Text(traceback.format_exc(), size=10, selectable=True),
         )
         page.update()
 
